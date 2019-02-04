@@ -1,0 +1,60 @@
+function get_forecast_online_error(opts)
+%   Detailed explanation goes here
+    if nargin<1
+        fprintf('Not enough input arguments!\n');
+        return;
+    end
+    if ~isfield(opts, 'config_filename')
+        fprintf('Configure Filename Not Found!\n');
+        return;
+    end
+    if isfield(opts, 'config_add')
+        [configure_all, filename_all] = get_configure(opts.config_filename, opts.config_add);
+    else
+        [configure_all, filename_all] = get_configure(opts.config_filename);
+    end
+
+    process = 'Calculate prediction error';
+    fprintf('---------- %s / Begin ----------\n', process);
+    
+%     load(sprintf('%s/forecast.mat',filename_all.data_dir));
+%     load(sprintf('%s/model.mat',filename_all.data_dir));
+%     load(sprintf('%s/best_track.mat',filename_all.data_dir));
+%     load(sprintf('%s/train_test_idx.mat',filename_all.data_dir));
+    filename=sprintf('forecast_tensor_%d_%d',opts.t,opts.beta);
+    load(sprintf('%s/%s.mat',filename_all.data_dir,filename));
+    
+    Ens_mean=zeros(opts.beta,1);
+    Ens_median=zeros(opts.beta,1);
+    Ens_online=zeros(opts.beta,1);
+    counts=zeros(opts.beta,1);
+    
+    t1=clock;
+    num = numel(forecast_tensor);
+    for h=1:num
+        if mod(h,20)==0
+            t2=clock;
+            fprintf('%s / Runs:%d/%d / Timeleft:%s\n', process, h, num, get_timeleft(h,num,t1,t2));
+        end
+        n = length(forecast_tensor(h).models);
+        for t=1:size(forecast_tensor(h).X,4)
+            for tau=1:opts.beta
+                if forecast_tensor(h).label(tau,t)>0
+                    Y=forecast_tensor(h).Y(:,forecast_tensor(h).label(tau,t));
+                    X=forecast_tensor(h).X(:,:,tau,t);
+                    predict_mean=mean(X);
+                    predict_median=median(X);
+                    forecast_tensor(h).predict(:,tau,t);
+                end
+            end
+        end
+        % renew Omega
+        [~, idx_models] = ismember(forecast_tensor(h).models, opts.models);
+        O = opts.Omega(idx_models);
+        O = O+opts.rho*U;
+        opts.Omega(idx_models)=O/sum(O)*sum(opts.Omega(idx_models));
+    end
+    
+    save(sprintf('%s/%s.mat',filename_all.data_dir,filename),'forecast_tensor');
+end
+
